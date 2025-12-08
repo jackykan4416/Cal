@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>分帳小幫手</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --color-primary: #FF6B6B; /* 改用比較活潑的顏色 */
+            --color-bg: #FFF5F5;
+            --color-text: #2C3E50;
+        }
+        body { 
+            font-family: 'Zen Maru Gothic', sans-serif; 
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .card-rounded { border-radius: 20px; }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen pb-10">
+
+    <div id="app" class="max-w-md mx-auto relative p-4" v-cloak>
+        
+        <header class="flex justify-between items-center mb-6 pt-4">
+            <div>
+                <h1 class="text-2xl font-black text-slate-700 flex items-center">
+                    <i class="fas fa-utensils text-[var(--color-primary)] mr-3"></i>食飯計
+                </h1>
+                <p class="text-xs text-slate-400 font-bold ml-1 mt-1" v-if="loading"><i class="fas fa-spinner fa-spin mr-1"></i>資料同步中...</p>
+                <p class="text-xs text-slate-400 font-bold ml-1 mt-1" v-else>找數啦仆街</p>
+            </div>
+            <button @click="showPeopleModal = true" class="w-10 h-10 rounded-full bg-white shadow-sm border border-slate-100 text-slate-500 hover:text-[var(--color-primary)] transition flex items-center justify-center">
+                <i class="fas fa-users-cog"></i>
+            </button>
+        </header>
+
+        <div class="bg-gradient-to-br from-slate-700 to-slate-800 p-6 card-rounded shadow-xl mb-6 text-center text-white relative overflow-hidden">
+            <p class="text-slate-300 text-xs mb-1 font-bold tracking-widest uppercase">總數</p>
+            <h2 class="text-5xl font-black mb-4 tracking-tight font-mono">
+                <span class="text-2xl align-top mr-1">$</span>{{ totalExpense.toLocaleString() }}
+            </h2>
+            <div class="flex justify-center gap-2 flex-wrap pt-4 border-t border-slate-600">
+                <div v-for="name in people" :key="name" class="flex flex-col items-center min-w-[60px]">
+                    <span class="font-bold mb-1 opacity-60 text-[10px]">{{ name }}</span>
+                    <span class="bg-white/10 px-2 py-1 rounded-lg text-xs font-bold tracking-wide">
+                        ${{ getPersonTotal(name).toLocaleString() }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-3 mb-6">
+            <button @click="openAddModal" class="flex-1 bg-[var(--color-primary)] hover:opacity-90 text-white font-bold py-4 rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center text-lg">
+                <i class="fas fa-plus mr-2"></i> 記一筆
+            </button>
+            <button @click="calculateSettlement" class="w-20 bg-white text-slate-600 hover:bg-slate-50 font-bold rounded-2xl shadow-sm transition flex items-center justify-center flex-col text-xs border border-slate-100">
+                <i class="fas fa-calculator text-xl mb-1 text-emerald-500"></i> 結算
+            </button>
+        </div>
+
+        <div v-if="!APPS_SCRIPT_URL" class="bg-red-50 text-red-500 p-4 rounded-2xl text-xs mb-4 flex items-center border border-red-100">
+            <i class="fas fa-exclamation-triangle mr-3 text-lg"></i> 請填入 Apps Script 網址以啟用儲存功能
+        </div>
+
+        <div class="space-y-3 pb-24">
+            <div v-if="expenses.length === 0 && !loading" class="text-center py-12 text-slate-300">
+                <i class="fas fa-receipt text-4xl mb-3 opacity-30"></i>
+                <p class="text-sm font-bold">還沒有紀錄</p>
+            </div>
+
+            <div v-for="(exp, index) in expenses" :key="index" class="bg-white p-4 card-rounded shadow-sm flex justify-between items-center border border-slate-50 relative group">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center mr-4 font-black text-sm shrink-0 border border-slate-200">
+                        {{ exp.payer.charAt(0) }}
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-700 text-base line-clamp-1">{{ exp.description }}</h4>
+                        <p class="text-xs font-bold mt-0.5 text-slate-400">
+                            {{ exp.payer }} 先付
+                        </p>
+                    </div>
+                </div>
+                <div class="text-right shrink-0 ml-3">
+                    <span class="block font-black text-lg text-[var(--color-primary)]">
+                        ${{ parseInt(exp.amount).toLocaleString() }}
+                    </span>
+                    <button @click="deleteExpense(exp)" :disabled="isDeleting === exp.id" class="text-xs text-red-300 hover:text-red-500 mt-1 px-2 py-1 transition">
+                        <span v-if="isDeleting === exp.id"><i class="fas fa-spinner fa-spin"></i></span>
+                        <span v-else><i class="fas fa-trash"></i></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" @click.self="showModal = false">
+            <div class="bg-white card-rounded w-full max-w-sm p-6 shadow-2xl transform transition-all">
+                <h3 class="text-xl font-bold mb-6 text-slate-800 flex items-center">
+                    <i class="fas fa-edit mr-3 text-[var(--color-primary)]"></i>記帳
+                </h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 mb-2 ml-1">金額</label>
+                        <input type="number" v-model="newExpense.amount" class="w-full bg-slate-50 border-none rounded-2xl p-4 text-2xl text-slate-800 font-bold focus:ring-2 focus:ring-[var(--color-primary)] transition font-mono" placeholder="0" inputmode="numeric" autofocus>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 mb-2 ml-1">項目</label>
+                        <input type="text" v-model="newExpense.description" class="w-full bg-slate-50 border-none rounded-2xl p-4 text-base text-slate-800 font-bold focus:ring-2 focus:ring-[var(--color-primary)] transition" placeholder="例如: 晚餐、KTV">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 mb-2 ml-1">誰先付的？</label>
+                        <div class="relative">
+                            <select v-model="newExpense.payer" class="w-full bg-slate-50 border-none rounded-2xl p-4 text-base text-slate-800 font-bold focus:ring-2 focus:ring-[var(--color-primary)] appearance-none">
+                                <option v-for="person in people" :key="person" :value="person">{{ person }}</option>
+                            </select>
+                            <i class="fas fa-chevron-down absolute right-5 top-5 text-slate-400 pointer-events-none"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex space-x-3">
+                    <button @click="showModal = false" class="flex-1 py-3 bg-slate-100 text-slate-500 rounded-2xl font-bold hover:bg-slate-200 transition">取消</button>
+                    <button @click="submitExpense" :disabled="isSaving" class="flex-1 py-3 bg-[var(--color-primary)] text-white rounded-2xl font-bold hover:opacity-90 transition shadow-lg flex justify-center items-center">
+                        <span v-if="isSaving"><i class="fas fa-circle-notch fa-spin mr-2"></i>處理中</span>
+                        <span v-else>儲存</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showPeopleModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" @click.self="showPeopleModal = false">
+            <div class="bg-white card-rounded w-full max-w-sm p-6 shadow-2xl">
+                <h3 class="text-xl font-bold mb-4 text-slate-800">成員管理</h3>
+                
+                <div class="flex gap-2 mb-4">
+                    <input type="text" v-model="newPersonName" @keyup.enter="addPerson" placeholder="輸入名字..." class="flex-1 bg-slate-50 rounded-xl px-4 py-3 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]">
+                    <button @click="addPerson" class="bg-slate-200 text-slate-600 px-4 rounded-xl font-bold hover:bg-slate-300 transition"><i class="fas fa-plus"></i></button>
+                </div>
+
+                <div class="space-y-2 mb-6 max-h-[300px] overflow-y-auto">
+                    <div v-for="(person, idx) in people" :key="person" class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-700">{{ person }}</span>
+                        <button @click="removePerson(idx)" class="text-red-400 hover:text-red-600 w-8 h-8 flex items-center justify-center bg-white rounded-full shadow-sm"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+
+                <button @click="savePeople" :disabled="isSavingPeople" class="w-full py-3 bg-slate-800 text-white rounded-xl font-bold hover:opacity-90 transition flex justify-center items-center">
+                    <span v-if="isSavingPeople"><i class="fas fa-circle-notch fa-spin mr-2"></i>同步中</span>
+                    <span v-else>完成並同步</span>
+                </button>
+            </div>
+        </div>
+
+        <div v-if="showSettlementModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" @click.self="showSettlementModal = false">
+            <div class="bg-white card-rounded w-full max-w-sm p-6 shadow-2xl overflow-y-auto max-h-[80vh]">
+                <h3 class="text-xl font-bold mb-4 text-slate-800 flex items-center"><i class="fas fa-calculator mr-3 text-emerald-500"></i>結算建議</h3>
+                
+                <div class="bg-emerald-50 rounded-xl p-4 mb-4 border border-emerald-100">
+                    <div class="text-xs text-emerald-600 font-bold mb-1">平均每人應付</div>
+                    <div class="text-3xl font-black text-emerald-600">${{ averageCost.toLocaleString() }}</div>
+                </div>
+
+                <div v-if="settlementPlan.length > 0" class="space-y-3">
+                    <div v-for="(plan, idx) in settlementPlan" :key="idx" class="flex items-center justify-between bg-white border border-slate-100 p-4 rounded-xl shadow-sm">
+                        <div class="flex items-center">
+                            <span class="font-bold text-slate-700">{{ plan.from }}</span>
+                            <i class="fas fa-long-arrow-alt-right mx-3 text-slate-300"></i>
+                            <span class="font-bold text-[var(--color-primary)]">{{ plan.to }}</span>
+                        </div>
+                        <span class="font-mono font-bold text-slate-700">${{ plan.amount.toLocaleString() }}</span>
+                    </div>
+                </div>
+                <div v-else class="text-center py-8 text-slate-400 text-sm font-bold">
+                    目前大家收支平衡，不用轉帳！ 🎉
+                </div>
+
+                <button @click="showSettlementModal = false" class="w-full mt-6 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold hover:bg-slate-200 transition">關閉</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ▼▼▼ 請將這裡替換成你的 Apps Script 網址 ▼▼▼
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbziElvEeQYCsdGpPMAMwAMXQvQXC2X0b_GT_qj8A_Z_yY7l0Zp_jBAt9urWwSVW_1t0/exec'; 
+
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const loading = ref(false);
+                const isSaving = ref(false);
+                const isDeleting = ref(null);
+                const expenses = ref([]);
+                const people = ref([]); // 動態成員名單
+                
+                // Modal States
+                const showModal = ref(false);
+                const showSettlementModal = ref(false);
+                const showPeopleModal = ref(false);
+                const isSavingPeople = ref(false);
+                
+                const newExpense = ref({ amount: '', description: '', payer: '' });
+                const newPersonName = ref('');
+                const settlementPlan = ref([]);
+
+                // Computed
+                const totalExpense = computed(() => expenses.value.reduce((sum, item) => sum + (parseInt(item.amount)||0), 0));
+                const averageCost = computed(() => people.value.length > 0 ? Math.ceil(totalExpense.value / people.value.length) : 0);
+
+                const getPersonTotal = (name) => {
+                    return expenses.value
+                        .filter(e => e.payer === name)
+                        .reduce((sum, e) => sum + (parseInt(e.amount)||0), 0);
+                };
+
+                // Operations
+                const fetchData = async () => {
+                    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('請貼上')) {
+                        // 演示用假資料
+                        expenses.value = [
+                            {id: '1', date: '2023-10-01', description: '午餐', amount: 1200, payer: '我'},
+                            {id: '2', date: '2023-10-01', description: '飲料', amount: 300, payer: '朋友A'}
+                        ];
+                        people.value = ['我', '朋友A', '朋友B'];
+                        return;
+                    }
+                    
+                    loading.value = true;
+                    try {
+                        const res = await fetch(`${APPS_SCRIPT_URL}?t=${Date.now()}`);
+                        const data = await res.json();
+                        if (data.expenses) expenses.value = data.expenses;
+                        if (data.people && data.people.length > 0) people.value = data.people;
+                    } catch (e) {
+                        console.error(e);
+                        alert("讀取失敗，請檢查網址");
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const openAddModal = () => {
+                    if(people.value.length === 0) {
+                        alert("請先點擊右上角設定成員！");
+                        showPeopleModal.value = true;
+                        return;
+                    }
+                    newExpense.value = { amount: '', description: '', payer: people.value[0] };
+                    showModal.value = true;
+                };
+
+                const submitExpense = async () => {
+                    if (!newExpense.value.amount || !newExpense.value.payer) return;
+                    if (!APPS_SCRIPT_URL) { alert("請設定 API 網址"); return; }
+                    
+                    isSaving.value = true;
+                    const id = 'id-' + Date.now();
+                    const payload = {
+                        action: 'add_expense',
+                        id: id,
+                        amount: parseInt(newExpense.value.amount),
+                        description: newExpense.value.description || '未分類',
+                        payer: newExpense.value.payer
+                    };
+
+                    try {
+                        // Optimistic update
+                        expenses.value.unshift({ ...payload, date: new Date().toISOString() });
+                        await fetch(APPS_SCRIPT_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify(payload)
+                        });
+                        showModal.value = false;
+                        setTimeout(fetchData, 1000); // Re-sync to be safe
+                    } catch (e) {
+                        alert("儲存失敗");
+                    } finally {
+                        isSaving.value = false;
+                    }
+                };
+
+                const deleteExpense = async (item) => {
+                    if(!confirm("確定刪除此筆紀錄？")) return;
+                    isDeleting.value = item.id;
+                    try {
+                        expenses.value = expenses.value.filter(e => e.id !== item.id);
+                        await fetch(APPS_SCRIPT_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({ action: 'delete_expense', id: item.id })
+                        });
+                    } catch(e) { alert("刪除失敗"); } 
+                    finally { isDeleting.value = null; }
+                };
+
+                // People Management
+                const addPerson = () => {
+                    const name = newPersonName.value.trim();
+                    if(name && !people.value.includes(name)) {
+                        people.value.push(name);
+                        newPersonName.value = '';
+                    }
+                };
+                
+                const removePerson = (idx) => {
+                    if(confirm(`確定移除成員「${people.value[idx]}」？(不會刪除他的記帳紀錄，但會影響結算計算)`)) {
+                        people.value.splice(idx, 1);
+                    }
+                };
+
+                const savePeople = async () => {
+                    isSavingPeople.value = true;
+                    try {
+                        await fetch(APPS_SCRIPT_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({ action: 'update_people', people: people.value })
+                        });
+                        showPeopleModal.value = false;
+                    } catch(e) {
+                        alert("成員同步失敗");
+                    } finally {
+                        isSavingPeople.value = false;
+                    }
+                };
+
+                // Settlement Logic
+                const calculateSettlement = () => {
+                    if (people.value.length === 0) return;
+
+                    const balance = {};
+                    people.value.forEach(p => balance[p] = 0);
+
+                    // 1. 計算每個人「墊付」了多少錢
+                    expenses.value.forEach(exp => {
+                        // 只計算目前還在名單內的人
+                        if (balance.hasOwnProperty(exp.payer)) {
+                            balance[exp.payer] += parseInt(exp.amount);
+                        }
+                    });
+
+                    // 2. 計算總花費與平均
+                    const total = Object.values(balance).reduce((a, b) => a + b, 0);
+                    const average = total / people.value.length;
+
+                    // 3. 計算差額 (正數代表付多了要拿回，負數代表少付了要給錢)
+                    const diffs = [];
+                    for (const person in balance) {
+                        diffs.push({ name: person, val: balance[person] - average });
+                    }
+                    
+                    // 排序：少付最多的在前，多付最多的在後
+                    diffs.sort((a, b) => a.val - b.val);
+
+                    // 4. 配對
+                    const plan = [];
+                    let i = 0; // 欠錢的人 (val < 0)
+                    let j = diffs.length - 1; // 債主 (val > 0)
+
+                    while (i < j) {
+                        const debtor = diffs[i];
+                        const creditor = diffs[j];
+
+                        // 如果金額已經很小，忽略誤差
+                        if (Math.abs(debtor.val) < 1 && Math.abs(creditor.val) < 1) break;
+
+                        // 找出「債務人欠的錢」和「債主該拿的錢」哪個比較小，取小的那個金額做交易
+                        const amount = Math.min(Math.abs(debtor.val), creditor.val);
+
+                        if (amount > 0) {
+                            plan.push({
+                                from: debtor.name,
+                                to: creditor.name,
+                                amount: Math.ceil(amount)
+                            });
+                        }
+
+                        // 更新餘額
+                        debtor.val += amount;
+                        creditor.val -= amount;
+
+                        // 如果債務人還清了，換下一個債務人
+                        if (Math.abs(debtor.val) < 1) i++;
+                        // 如果債主拿夠了，換下一個債主
+                        if (Math.abs(creditor.val) < 1) j--;
+                    }
+
+                    settlementPlan.value = plan;
+                    showSettlementModal.value = true;
+                };
+
+                onMounted(() => {
+                    fetchData();
+                });
+
+                return {
+                    expenses, people, loading, totalExpense,
+                    showModal, showSettlementModal, showPeopleModal,
+                    newExpense, newPersonName, isSaving, isDeleting, isSavingPeople,
+                    averageCost, settlementPlan, getPersonTotal,
+                    openAddModal, submitExpense, deleteExpense,
+                    addPerson, removePerson, savePeople, calculateSettlement,
+                    APPS_SCRIPT_URL
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
