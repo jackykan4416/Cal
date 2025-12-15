@@ -118,7 +118,7 @@
                                     <span class="ml-2 text-xs bg-slate-100 px-2 rounded text-slate-400 align-middle">{{ getDayOfWeek(event.finalDate) }}</span>
                                 </span>
                                 <div class="flex flex-wrap gap-3 text-xs text-slate-400 mt-1">
-                                    <span><i class="far fa-clock mr-1"></i>{{ event.startTime }} 開始</span>
+                                    <span><i class="far fa-clock mr-1"></i>{{ formatTimeDisplay(event.startTime) }} 開始</span>
                                     <span v-if="event.gatheringTime"><i class="fas fa-map-marker-alt mr-1"></i>{{ event.gatheringTime }} 集合</span>
                                 </div>
                             </div>
@@ -871,7 +871,21 @@
                 const formatDate = (d) => d.replace(/-/g, '/');
                 const formatDateShort = (d) => d.substring(5).replace('-', '/');
                 const getDayOfWeek = (d) => '週' + ['日','一','二','三','四','五','六'][new Date(d).getDay()];
-                
+                const formatTimeDisplay = (timeStr) => {
+    if (!timeStr) return '';
+    // 如果資料回來變成了長長的 ISO 時間 (包含 T 或 1899)
+    if (timeStr.includes('T') || timeStr.includes('1899')) {
+        const date = new Date(timeStr);
+        // 這會自動根據使用者的時區 (例如台灣 +8) 轉回正確的時間，例如 20:23
+        return date.toLocaleTimeString('zh-TW', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            hour12: false 
+        });
+    }
+    // 如果原本就是單純的 "20:00" 字串，就直接回傳
+    return timeStr;
+};
 
                 onMounted(() => fetchData());
 
@@ -890,7 +904,7 @@
                     toggleVote, hasVoted, getVotePercentage, finalizeDate, toggleAddChopsticks, addChopsticks, 
                     getNonAttendees, removeAttendee,
                     openExpenseModal, openExpenseEditModal, submitExpense, deleteExpense,
-                    isEventPast, formatDate, formatDateShort, getDayOfWeek, getPersonTotal
+                    isEventPast, formatDate, formatDateShort, getDayOfWeek, getPersonTotal,formatTimeDisplay
                 };
             }
         }).mount('#app');
